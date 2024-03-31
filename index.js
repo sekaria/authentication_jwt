@@ -5,21 +5,10 @@ const jwt = require('jsonwebtoken')
 const bcrypt = require('bcrypt')
 const host = 'localhost'
 const port = 3000
-const { verifyToken } = require('./utils')
+const { verifyToken, getUsernameFromToken } = require('./utils')
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: false }))
-
-function getUsernameFromToken(token) {
-	try {
-		const decodedToken = jwt.verify(token, '123')
-		const username = decodedToken.username
-		return username
-	} catch (error) {
-		console.error('Error decoding JWT token:', error)
-		return null
-	}
-}
 
 //welcome
 app.get('/', (req, res) => {
@@ -54,6 +43,7 @@ app.post('/register', (req, res) => {
 				}
 
 				res.json({
+					result: insertResult,
 					message: 'User Registered!',
 				})
 			})
@@ -133,13 +123,13 @@ app.get('/todolist', verifyToken, (req, res) => {
 app.put('/todolist/:id', verifyToken, (req, res) => {
 	const todolist_id = req.params.id
 	const done = req.body.done
+	if (done !== 0 && done !== 1) {
+		return res.status(400).json({ message: 'Invalid value for done. Please provide 0 or 1.' })
+	}
+
 	const username = getUsernameFromToken(req.token)
 	if (username === null) {
 		return res.status(401).json({ message: 'Unauthorized' })
-	}
-
-	if (done !== 0 && done !== 1) {
-		return res.status(400).json({ message: 'Invalid value for done. Please provide 0 or 1.' })
 	}
 
 	dbConnect.query('SELECT * FROM todolists WHERE todolist_id = ? AND username = ?', [todolist_id, username], (selectErr, selectResult) => {
@@ -152,7 +142,6 @@ app.put('/todolist/:id', verifyToken, (req, res) => {
 			return res.status(403).json({ message: 'Forbidden' })
 		}
 
-		// Jika entri ditemukan, lakukan pembaruan status done
 		dbConnect.query('UPDATE todolists SET done = ? WHERE todolist_id = ?', [done, todolist_id], (updateErr, updateResult) => {
 			if (updateErr) {
 				console.error(updateErr)
