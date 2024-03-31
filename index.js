@@ -5,9 +5,21 @@ const jwt = require('jsonwebtoken')
 const bcrypt = require('bcrypt')
 const host = 'localhost'
 const port = 3000
+const { verifyToken } = require('./utils')
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: false }))
+
+function getUsernameFromToken(token) {
+	try {
+		const decodedToken = jwt.verify(token, '123')
+		const username = decodedToken.username
+		return username
+	} catch (error) {
+		console.error('Error decoding JWT token:', error)
+		return null
+	}
+}
 
 //welcome
 app.get('/', (req, res) => {
@@ -42,7 +54,6 @@ app.post('/register', (req, res) => {
 				}
 
 				res.json({
-					result: insertResult,
 					message: 'User Registered!',
 				})
 			})
@@ -56,7 +67,10 @@ app.post('/login', (req, res) => {
 	const password = req.body.password
 
 	dbConnect.query('SELECT * FROM users WHERE username = ?', [username], (err, result) => {
-		if (err) throw err
+		if (err) {
+			console.error(err)
+			return res.status(500).json({ message: 'Internal Server Error' })
+		}
 		if (result.length > 0) {
 			console.log(result)
 			bcrypt.compare(password, result[0].password, (err, response) => {
@@ -73,38 +87,18 @@ app.post('/login', (req, res) => {
 	})
 })
 
-//verify token
-function verifyToken(req, res, next) {
-	const bearerHeader = req.headers['authorization']
-	if (typeof bearerHeader !== 'undefined') {
-		const bearer = bearerHeader.split(' ')
-		const token = bearer[1]
-		req.token = token
-		next()
-	} else {
-		res.sendStatus(403)
-	}
-}
-
-//get username
-function getUsernameFromToken(token) {
-	try {
-		const decodedToken = jwt.verify(token, '123')
-		const username = decodedToken.username
-		return username
-	} catch (error) {
-		console.error('Error decoding JWT token:', error)
-		return null
-	}
-}
-
 //add todolist
 app.post('/todolist', verifyToken, (req, res) => {
 	const title = req.body.title
 	const description = req.body.description
 	const done = req.body.done
-
+	if (done !== 0 && done !== 1) {
+		return res.status(400).json({ message: 'Invalid value for done. Please provide 0 or 1.' })
+	}
 	const username = getUsernameFromToken(req.token)
+	if (username === null) {
+		return res.status(401).json({ message: 'Unauthorized' })
+	}
 
 	dbConnect.query('INSERT INTO todolists (username, title, description, done) VALUES (?, ?, ?, ?)', [username, title, description, done], (err, result) => {
 		if (err) {
@@ -119,11 +113,17 @@ app.post('/todolist', verifyToken, (req, res) => {
 //show todolist
 app.get('/todolist', verifyToken, (req, res) => {
 	const username = getUsernameFromToken(req.token)
+	if (username === null) {
+		return res.status(401).json({ message: 'Unauthorized' })
+	}
 
 	dbConnect.query('SELECT * FROM todolists WHERE username = ?', [username], (err, result) => {
 		if (err) {
 			console.error(err)
 			return res.status(500).json({ message: 'Internal Server Error' })
+		}
+		if (result.length === 0) {
+			return res.status(200).json({ message: 'No todolist found for the user' })
 		}
 		res.json(result)
 	})
@@ -133,8 +133,15 @@ app.get('/todolist', verifyToken, (req, res) => {
 app.put('/todolist/:id', verifyToken, (req, res) => {
 	const todolist_id = req.params.id
 	const done = req.body.done
-
 	const username = getUsernameFromToken(req.token)
+	if (username === null) {
+		return res.status(401).json({ message: 'Unauthorized' })
+	}
+
+	if (done !== 0 && done !== 1) {
+		return res.status(400).json({ message: 'Invalid value for done. Please provide 0 or 1.' })
+	}
+
 	dbConnect.query('SELECT * FROM todolists WHERE todolist_id = ? AND username = ?', [todolist_id, username], (selectErr, selectResult) => {
 		if (selectErr) {
 			console.error(selectErr)
@@ -160,6 +167,9 @@ app.put('/todolist/:id', verifyToken, (req, res) => {
 app.delete('/todolist/:id', verifyToken, (req, res) => {
 	const todolist_id = req.params.id
 	const username = getUsernameFromToken(req.token)
+	if (username === null) {
+		return res.status(401).json({ message: 'Unauthorized' })
+	}
 
 	dbConnect.query('SELECT * FROM todolists WHERE todolist_id = ? AND username = ?', [todolist_id, username], (selectErr, selectResult) => {
 		if (selectErr) {
@@ -171,7 +181,6 @@ app.delete('/todolist/:id', verifyToken, (req, res) => {
 			return res.status(403).json({ message: 'Forbidden' })
 		}
 
-		// Jika entri ditemukan, lakukan pembaruan status done
 		dbConnect.query('DELETE FROM todolists WHERE todolist_id = ?', [todolist_id], (updateErr, updateResult) => {
 			if (updateErr) {
 				console.error(updateErr)
