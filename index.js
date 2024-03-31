@@ -42,8 +42,7 @@ app.post('/register', (req, res) => {
 					return res.status(500).json({ message: 'Internal Server Error' })
 				}
 
-				res.json({
-					result: insertResult,
+				res.status(201).json({
 					message: 'User Registered!',
 				})
 			})
@@ -68,11 +67,11 @@ app.post('/login', (req, res) => {
 					const token = jwt.sign({ username: result[0].username }, '123')
 					res.json({ token: token })
 				} else {
-					res.json({ message: 'Invalid username/password' })
+					res.status(401).json({ message: 'Invalid username/password' })
 				}
 			})
 		} else {
-			res.json({ message: 'User not found' })
+			res.status(404).json({ message: 'User not found' })
 		}
 	})
 })
