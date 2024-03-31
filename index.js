@@ -87,9 +87,9 @@ function verifyToken(req, res, next) {
 }
 
 //get username
-function getUsernameFromToken() {
+function getUsernameFromToken(token) {
 	try {
-		const decodedToken = jwt.verify(verifyToken(), '123')
+		const decodedToken = jwt.verify(token, '123')
 		const username = decodedToken.username
 		return username
 	} catch (error) {
@@ -98,35 +98,15 @@ function getUsernameFromToken() {
 	}
 }
 
-//get id_user
-function getId() {
-	const username = getUsernameFromToken()
-	if (!username) {
-		return res.status(401).json({ message: 'Unauthorized' })
-	}
-	dbConnect.query('SELECT id_user FROM users WHERE username = ?', [username], (err, result) => {
-		if (err) {
-			console.error(err)
-			return res.status(500).json({ message: 'Internal Server Error' })
-		}
-
-		if (result.length === 0) {
-			return res.status(404).json({ message: 'User not found' })
-		}
-
-		const id_user = result[0].id_user
-		return id_user
-	})
-}
-
 //add todolist
 app.post('/todolist', verifyToken, (req, res) => {
 	const title = req.body.title
 	const description = req.body.description
 	const done = req.body.done
-	const id_user = getId()
 
-	dbConnect.query('INSERT INTO todolists (id_user, title, description, done) VALUES (?, ?, ?, ?)', [id_user, title, description, done], (err, result) => {
+	const username = getUsernameFromToken(req.token)
+
+	dbConnect.query('INSERT INTO todolists (username, title, description, done) VALUES (?, ?, ?, ?)', [username, title, description, done], (err, result) => {
 		if (err) {
 			console.error(err)
 			return res.status(500).json({ message: 'Internal Server Error' })
@@ -136,28 +116,69 @@ app.post('/todolist', verifyToken, (req, res) => {
 	})
 })
 
-//todolist
+//show todolist
 app.get('/todolist', verifyToken, (req, res) => {
-	dbConnect.query('SELECT * FROM todolists', (err, result) => {
-		if (err) throw err
+	const username = getUsernameFromToken(req.token)
+
+	dbConnect.query('SELECT * FROM todolists WHERE username = ?', [username], (err, result) => {
+		if (err) {
+			console.error(err)
+			return res.status(500).json({ message: 'Internal Server Error' })
+		}
 		res.json(result)
 	})
 })
 
-app.put('todolist/:id', verifyToken, (req, res) => {
+//update status done todolist
+app.put('/todolist/:id', verifyToken, (req, res) => {
 	const todolist_id = req.params.id
-	const todolist_name = req.body.todolist
-	dbConnect.query('UPDATE todolists SET todolist_name = ? WHERE todolist_id = ?', [todolist_name, todolist_id], (err, result) => {
-		if (err) throw err
-		res.json({ message: 'Todolist updated' })
+	const done = req.body.done
+
+	const username = getUsernameFromToken(req.token)
+	dbConnect.query('SELECT * FROM todolists WHERE todolist_id = ? AND username = ?', [todolist_id, username], (selectErr, selectResult) => {
+		if (selectErr) {
+			console.error(selectErr)
+			return res.status(500).json({ message: 'Internal Server Error' })
+		}
+
+		if (selectResult.length === 0) {
+			return res.status(403).json({ message: 'Forbidden' })
+		}
+
+		// Jika entri ditemukan, lakukan pembaruan status done
+		dbConnect.query('UPDATE todolists SET done = ? WHERE todolist_id = ?', [done, todolist_id], (updateErr, updateResult) => {
+			if (updateErr) {
+				console.error(updateErr)
+				return res.status(500).json({ message: 'Internal Server Error' })
+			}
+			res.json({ message: 'Todolist updated' })
+		})
 	})
 })
 
+//delete todolist
 app.delete('/todolist/:id', verifyToken, (req, res) => {
 	const todolist_id = req.params.id
-	dbConnect.query('DELETE FROM todolists WHERE todolist_id = ?', [todolist_id], (err, result) => {
-		if (err) throw err
-		res.json({ message: 'Todolist deleted' })
+	const username = getUsernameFromToken(req.token)
+
+	dbConnect.query('SELECT * FROM todolists WHERE todolist_id = ? AND username = ?', [todolist_id, username], (selectErr, selectResult) => {
+		if (selectErr) {
+			console.error(selectErr)
+			return res.status(500).json({ message: 'Internal Server Error' })
+		}
+
+		if (selectResult.length === 0) {
+			return res.status(403).json({ message: 'Forbidden' })
+		}
+
+		// Jika entri ditemukan, lakukan pembaruan status done
+		dbConnect.query('DELETE FROM todolists WHERE todolist_id = ?', [todolist_id], (updateErr, updateResult) => {
+			if (updateErr) {
+				console.error(updateErr)
+				return res.status(500).json({ message: 'Internal Server Error' })
+			}
+			res.json({ message: 'Todolist deleted' })
+		})
 	})
 })
 
